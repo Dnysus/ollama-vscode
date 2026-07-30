@@ -14,9 +14,15 @@
     "vscode": "^1.120.0"
   },
   "categories": [
-    "AI",
-    "Machine Learning",
-    "Other"
+    "AI"
+  ],
+  "keywords": [
+    "ollama",
+    "gemma",
+    "kimi-k3",
+    "glm-5.2",
+    "copilot",
+    "agent"
   ],
   "activationEvents": [
     "onStartupFinished",
