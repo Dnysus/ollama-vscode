@@ -90,3 +90,18 @@ test('keeps the existing fallback for unknown tool result content', () => {
     tool_call_id: 'call-3'
   }]);
 });
+
+test('forwards image data from tool results on the corresponding tool message', () => {
+  const imageBytes = Uint8Array.from([0, 1, 2, 3]);
+  const result = new LanguageModelToolResultPart('call-4', [
+    new LanguageModelTextPart('browser screenshot'),
+    new LanguageModelDataPart(imageBytes, 'image/png')
+  ]);
+
+  assert.deepEqual(toOllamaMessages([{ role: 1, content: [result] }]), [{
+    role: 'tool',
+    content: 'browser screenshot',
+    images: [Buffer.from(imageBytes).toString('base64')],
+    tool_call_id: 'call-4'
+  }]);
+});
