@@ -28,9 +28,11 @@ export function toOllamaMessages(messages: readonly vscode.LanguageModelChatRequ
           }
         });
       } else if (part instanceof vscode.LanguageModelToolResultPart) {
+        const result = toolResultContent(part);
         toolResults.push({
           role: 'tool',
-          content: toolResultContent(part),
+          content: result.content,
+          ...(result.images.length > 0 ? { images: result.images } : {}),
           tool_call_id: part.callId
         });
       }
@@ -75,8 +77,9 @@ function roleToOllama(role: vscode.LanguageModelChatMessageRole): string {
   return 'user';
 }
 
-function toolResultContent(part: vscode.LanguageModelToolResultPart): string {
+function toolResultContent(part: vscode.LanguageModelToolResultPart): { content: string; images: string[] } {
   const content: string[] = [];
+  const images: string[] = [];
 
   for (const item of sanitizeToolResult(part)) {
     if (item instanceof vscode.LanguageModelTextPart) {
@@ -84,6 +87,10 @@ function toolResultContent(part: vscode.LanguageModelToolResultPart): string {
       continue;
     }
     if (item instanceof vscode.LanguageModelDataPart) {
+      if (item.mimeType.startsWith('image/')) {
+        images.push(Buffer.from(item.data).toString('base64'));
+        continue;
+      }
       if (item.mimeType.startsWith('text/')) {
         content.push(new TextDecoder().decode(item.data));
         continue;
@@ -92,7 +99,7 @@ function toolResultContent(part: vscode.LanguageModelToolResultPart): string {
     content.push(JSON.stringify(item));
   }
 
-  return content.join('\n');
+  return { content: content.join('\n'), images };
 }
 
 const providerOnlyToolResultMimeTypes: ReadonlySet<string> = new Set(['cache_control']);
