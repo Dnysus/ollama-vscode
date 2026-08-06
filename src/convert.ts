@@ -81,7 +81,7 @@ function toolResultContent(part: vscode.LanguageModelToolResultPart): { content:
   const content: string[] = [];
   const images: string[] = [];
 
-  for (const item of sanitizeToolResult(part)) {
+  for (const item of part.content) {
     if (item instanceof vscode.LanguageModelTextPart) {
       content.push(item.value);
       continue;
@@ -93,8 +93,10 @@ function toolResultContent(part: vscode.LanguageModelToolResultPart): { content:
       }
       if (item.mimeType.startsWith('text/')) {
         content.push(new TextDecoder().decode(item.data));
-        continue;
+      } else if (isJsonMimeType(item.mimeType)) {
+        content.push(new TextDecoder().decode(item.data));
       }
+      continue;
     }
     content.push(JSON.stringify(item));
   }
@@ -102,16 +104,8 @@ function toolResultContent(part: vscode.LanguageModelToolResultPart): { content:
   return { content: content.join('\n'), images };
 }
 
-const providerOnlyToolResultMimeTypes: ReadonlySet<string> = new Set(['cache_control']);
-
-/**
- * Remove provider-only metadata before tool results become model-visible text.
- * Add future control MIME types to providerOnlyToolResultMimeTypes.
- */
-function sanitizeToolResult(
-  part: vscode.LanguageModelToolResultPart
-): vscode.LanguageModelToolResultPart['content'] {
-  return part.content.filter(item =>
-    !(item instanceof vscode.LanguageModelDataPart && providerOnlyToolResultMimeTypes.has(item.mimeType))
-  );
+function isJsonMimeType(mimeType: string): boolean {
+  const normalized = mimeType.split(';', 1)[0].trim().toLowerCase();
+  return normalized === 'application/json'
+    || (normalized.startsWith('application/') && normalized.endsWith('+json'));
 }
