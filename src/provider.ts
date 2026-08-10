@@ -29,6 +29,11 @@ import {
   waitForMachineContextCheckBeforeStreaming,
   waitForMachineContextLength
 } from './contextLength';
+import {
+  OllamaDiagnosticsConfigurationTracker,
+  type OllamaDiagnosticsConfiguration,
+  type OllamaDiagnosticsConfigurationSelection
+} from './diagnostics';
 
 interface OllamaProviderConfiguration {
   url: string;
@@ -133,6 +138,7 @@ export class OllamaLanguageModelProvider implements vscode.LanguageModelChatProv
   private readonly tokenCounts = new CalibratedTokenEstimator();
   private readonly outdatedModelWarnings = new OutdatedModelWarningTracker();
   private readonly machineContextWarnings = new Set<string>();
+  private readonly diagnosticsConfigurations = new OllamaDiagnosticsConfigurationTracker();
   readonly onDidChangeLanguageModelChatInformation = this.changeEmitter.event;
 
   constructor(private readonly output?: vscode.OutputChannel) {}
@@ -146,11 +152,18 @@ export class OllamaLanguageModelProvider implements vscode.LanguageModelChatProv
     this.changeEmitter.dispose();
   }
 
+  selectDiagnosticsConfiguration(
+    workspaceConfiguration: OllamaDiagnosticsConfiguration
+  ): OllamaDiagnosticsConfigurationSelection {
+    return this.diagnosticsConfigurations.select(workspaceConfiguration);
+  }
+
   async provideLanguageModelChatInformation(
     options: vscode.PrepareLanguageModelChatModelOptions,
     token: vscode.CancellationToken
   ): Promise<OllamaLanguageModel[]> {
     const configuration = getConfiguration(options);
+    this.diagnosticsConfigurations.recordResolved(configuration);
     const disposables: vscode.Disposable[] = [];
     const request = createFetch(token, disposables);
     const ollama = new Ollama({
@@ -229,6 +242,7 @@ export class OllamaLanguageModelProvider implements vscode.LanguageModelChatProv
       fetch: createFetch(token, disposables, chatFetch.fetch)
     });
     const tools = toOllamaTools(options.tools);
+    this.diagnosticsConfigurations.recordUsed(model);
     this.output?.appendLine(`Sending chat request to ${model.model} at ${model.url}.`);
     let requestSucceeded = false;
     let machineContextSource: vscode.CancellationTokenSource | undefined;
