@@ -5,6 +5,7 @@ const {
   isMachineContextTooSmall,
   machineContextLength,
   minimumMachineContextLength,
+  waitForMachineContextCheckBeforeStreaming,
   waitForMachineContextLength
 } = require('../out/contextLength');
 
@@ -45,6 +46,7 @@ test('formats binary context sizes for the warning', () => {
 });
 
 test('polls for the machine context while the chat request is loading', async () => {
+  let requestSettled = false;
   let checks = 0;
   let waits = 0;
   const contextLength = await waitForMachineContextLength(
@@ -52,9 +54,10 @@ test('polls for the machine context while the chat request is loading', async ()
       ? []
       : [{ name: 'gemma3', context_length: 32768 }],
     'gemma3',
-    () => false,
+    () => requestSettled,
     async () => {
       waits++;
+      requestSettled = true;
       return true;
     }
   );
@@ -64,6 +67,31 @@ test('polls for the machine context while the chat request is loading', async ()
   assert.equal(waits, 1);
 });
 
+for (const [before, after] of [
+  [32768, 65536],
+  [65536, 32768]
+]) {
+  test(`confirms a ${formatContextLength(before)} runner changed to ${formatContextLength(after)} after chat readiness`, async () => {
+    let requestSettled = false;
+    let checks = 0;
+    const contextLength = await waitForMachineContextLength(
+      async () => {
+        checks++;
+        return [{ name: 'gemma3', context_length: checks === 1 ? before : after }];
+      },
+      'gemma3',
+      () => requestSettled,
+      async () => {
+        requestSettled = true;
+        return true;
+      }
+    );
+
+    assert.equal(contextLength, after);
+    assert.equal(checks, 2);
+  });
+}
+
 test('checks once more when the chat response arrives during a process lookup', async () => {
   let requestSettled = false;
   let checks = 0;
@@ -72,7 +100,7 @@ test('checks once more when the chat response arrives during a process lookup', 
       checks++;
       if (checks === 1) {
         requestSettled = true;
-        return [];
+        return [{ model: 'gemma3:latest', context_length: 32768 }];
       }
       return [{ model: 'gemma3:latest', context_length: 65536 }];
     },
@@ -101,4 +129,33 @@ test('stops polling when the request has settled without a local process', async
 
   assert.equal(contextLength, undefined);
   assert.equal(waits, 0);
+});
+
+test('releases a ready chat stream when the machine context check does not respond', async () => {
+  let cancelled = false;
+  const neverSettles = new Promise(() => {});
+
+  await waitForMachineContextCheckBeforeStreaming(
+    neverSettles,
+    async () => {},
+    () => { cancelled = true; }
+  );
+
+  assert.equal(cancelled, true);
+});
+
+test('does not time out a machine context check that finishes first', async () => {
+  let releaseTimeout;
+  let cancelled = false;
+  const timeout = new Promise(resolve => { releaseTimeout = resolve; });
+
+  await waitForMachineContextCheckBeforeStreaming(
+    Promise.resolve(),
+    () => timeout,
+    () => { cancelled = true; }
+  );
+  releaseTimeout();
+  await Promise.resolve();
+
+  assert.equal(cancelled, false);
 });

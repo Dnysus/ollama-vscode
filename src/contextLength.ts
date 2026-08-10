@@ -38,22 +38,35 @@ export async function waitForMachineContextLength(
   while (true) {
     const settledBeforeCheck = isRequestSettled();
     const contextLength = machineContextLength(await listModels(), requestedModel);
-    if (contextLength !== undefined) {
+    if (settledBeforeCheck) {
       return contextLength;
     }
 
-    if (settledBeforeCheck) {
-      return undefined;
-    }
     if (isRequestSettled()) {
-      // The request settled while /api/ps was in flight. Check once more now
-      // that Ollama has finished loading the model.
+      // Ignore a result from a lookup that began before the request settled.
+      // Check once more now that Ollama has finished loading the model.
       continue;
     }
     if (!await waitForNextCheck()) {
       return undefined;
     }
   }
+}
+
+export async function waitForMachineContextCheckBeforeStreaming(
+  check: Promise<void>,
+  waitForTimeout: () => Promise<void>,
+  cancelCheck: () => void
+): Promise<void> {
+  let checkFinished = false;
+  await Promise.race([
+    check.finally(() => { checkFinished = true; }),
+    waitForTimeout().then(() => {
+      if (!checkFinished) {
+        cancelCheck();
+      }
+    })
+  ]);
 }
 
 export function isMachineContextTooSmall(contextLength: number): boolean {
