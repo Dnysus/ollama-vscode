@@ -39,6 +39,22 @@ test('matches latest aliases and ignores invalid process context values', () => 
   }
 });
 
+test('does not treat model metadata as the runtime context allocation', () => {
+  assert.equal(machineContextLength([
+    {
+      name: 'gemma3:latest',
+      details: { context_length: 32768 },
+      model_info: { 'gemma3.context_length': 131072 }
+    }
+  ], 'gemma3'), undefined);
+});
+
+test('does not use the context allocation from a different running model', () => {
+  assert.equal(machineContextLength([
+    { name: 'qwen3.5:latest', context_length: 32768 }
+  ], 'gemma3'), undefined);
+});
+
 test('formats binary context sizes for the warning', () => {
   assert.equal(formatContextLength(32768), '32K');
   assert.equal(formatContextLength(65536), '64K');
@@ -129,6 +145,27 @@ test('stops polling when the request has settled without a local process', async
 
   assert.equal(contextLength, undefined);
   assert.equal(waits, 0);
+});
+
+test('stops polling when the next context check is cancelled', async () => {
+  let checks = 0;
+  let waits = 0;
+  const contextLength = await waitForMachineContextLength(
+    async () => {
+      checks++;
+      return [];
+    },
+    'gemma3',
+    () => false,
+    async () => {
+      waits++;
+      return false;
+    }
+  );
+
+  assert.equal(contextLength, undefined);
+  assert.equal(checks, 1);
+  assert.equal(waits, 1);
 });
 
 test('releases a ready chat stream when the machine context check does not respond', async () => {
