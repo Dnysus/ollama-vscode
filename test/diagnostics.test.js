@@ -4,8 +4,56 @@ const {
   inspectOllamaModels,
   loadedModelContextDiagnosticLines,
   maximumSupportedContextLength,
+  OllamaDiagnosticsConfigurationTracker,
   ollamaDiagnosticsClientOptions
 } = require('../out/diagnostics');
+
+test('uses the most recently resolved provider group when the workspace endpoint differs', () => {
+  const tracker = new OllamaDiagnosticsConfigurationTracker();
+  const workspaceConfiguration = {
+    url: 'https://workspace.example.test',
+    headers: { Authorization: 'Bearer workspace' }
+  };
+  tracker.recordResolved({
+    url: 'https://previous-provider.example.test',
+    headers: { Authorization: 'Bearer previous-provider' }
+  });
+  tracker.recordResolved({
+    url: 'https://provider.example.test',
+    headers: { Authorization: 'Bearer provider' }
+  });
+
+  const selected = tracker.select(workspaceConfiguration);
+
+  assert.equal(selected.source, 'resolved-provider-group');
+  assert.deepEqual(selected.configuration, {
+    url: 'https://provider.example.test',
+    headers: { Authorization: 'Bearer provider' }
+  });
+});
+
+test('prefers the most recently used provider group for diagnostics', () => {
+  const tracker = new OllamaDiagnosticsConfigurationTracker();
+  tracker.recordResolved({
+    url: 'https://resolved.example.test',
+    headers: { 'X-Ollama-Group': 'resolved' }
+  });
+  tracker.recordUsed({
+    url: 'https://used.example.test',
+    headers: { 'X-Ollama-Group': 'used' }
+  });
+
+  const selected = tracker.select({
+    url: 'https://workspace.example.test',
+    headers: {}
+  });
+
+  assert.equal(selected.source, 'used-provider-group');
+  assert.deepEqual(selected.configuration, {
+    url: 'https://used.example.test',
+    headers: { 'X-Ollama-Group': 'used' }
+  });
+});
 
 test('preserves endpoint, string headers, and cancellation-aware fetch in client options', () => {
   const request = async () => new Response();

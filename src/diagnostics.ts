@@ -15,6 +15,53 @@ interface OllamaModelList {
   models?: readonly unknown[];
 }
 
+export interface OllamaDiagnosticsConfiguration {
+  readonly url: string;
+  readonly headers: Readonly<Record<string, string>>;
+}
+
+export type OllamaDiagnosticsConfigurationSource =
+  | 'used-provider-group'
+  | 'resolved-provider-group'
+  | 'workspace-settings';
+
+export interface OllamaDiagnosticsConfigurationSelection {
+  configuration: OllamaDiagnosticsConfiguration;
+  source: OllamaDiagnosticsConfigurationSource;
+}
+
+export class OllamaDiagnosticsConfigurationTracker {
+  private lastResolvedConfiguration: OllamaDiagnosticsConfiguration | undefined;
+  private lastUsedConfiguration: OllamaDiagnosticsConfiguration | undefined;
+
+  recordResolved(configuration: OllamaDiagnosticsConfiguration): void {
+    this.lastResolvedConfiguration = copyConfiguration(configuration);
+  }
+
+  recordUsed(configuration: OllamaDiagnosticsConfiguration): void {
+    this.lastUsedConfiguration = copyConfiguration(configuration);
+  }
+
+  select(workspaceConfiguration: OllamaDiagnosticsConfiguration): OllamaDiagnosticsConfigurationSelection {
+    if (this.lastUsedConfiguration) {
+      return {
+        configuration: copyConfiguration(this.lastUsedConfiguration),
+        source: 'used-provider-group'
+      };
+    }
+    if (this.lastResolvedConfiguration) {
+      return {
+        configuration: copyConfiguration(this.lastResolvedConfiguration),
+        source: 'resolved-provider-group'
+      };
+    }
+    return {
+      configuration: copyConfiguration(workspaceConfiguration),
+      source: 'workspace-settings'
+    };
+  }
+}
+
 export interface OllamaDiagnosticsClient {
   list(): Promise<OllamaModelList>;
   ps(): Promise<OllamaModelList>;
@@ -216,6 +263,13 @@ function positiveInteger(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
     ? value
     : undefined;
+}
+
+function copyConfiguration(configuration: OllamaDiagnosticsConfiguration): OllamaDiagnosticsConfiguration {
+  return {
+    url: configuration.url,
+    headers: { ...configuration.headers }
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

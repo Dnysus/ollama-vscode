@@ -1,7 +1,11 @@
 import * as vscode from 'vscode';
 import { Ollama } from 'ollama';
 import { OllamaLanguageModelProvider, createFetch, disposeAll } from './provider';
-import { inspectOllamaModels, ollamaDiagnosticsClientOptions } from './diagnostics';
+import {
+  inspectOllamaModels,
+  ollamaDiagnosticsClientOptions,
+  type OllamaDiagnosticsConfigurationSource
+} from './diagnostics';
 
 const defaultOllamaURL = 'http://127.0.0.1:11434';
 const ollamaVendor = 'ollama-models';
@@ -17,13 +21,13 @@ export function activate(context: vscode.ExtensionContext) {
     provider,
     vscode.lm.registerLanguageModelChatProvider(ollamaVendor, provider),
     vscode.commands.registerCommand('ollama.refreshModels', () => provider.refresh()),
-    vscode.commands.registerCommand('ollama.diagnoseModels', () => diagnoseModels(output))
+    vscode.commands.registerCommand('ollama.diagnoseModels', () => diagnoseModels(output, provider))
   );
 }
 
 export function deactivate() {}
 
-async function diagnoseModels(output: vscode.OutputChannel) {
+async function diagnoseModels(output: vscode.OutputChannel, provider: OllamaLanguageModelProvider) {
   output.show(true);
   output.appendLine('--- Diagnostics ---');
 
@@ -36,19 +40,30 @@ async function diagnoseModels(output: vscode.OutputChannel) {
   const ollamaVSCodeModels = allVSCodeModels.filter(model => model.vendor === ollamaVendor);
   output.appendLine(`VS Code returned ${ollamaVSCodeModels.length} Ollama language model(s).`);
 
-  await inspectDirectOllamaModels(output);
+  await inspectDirectOllamaModels(output, provider);
 
   output.appendLine('--- End Diagnostics ---');
 }
 
-async function inspectDirectOllamaModels(output: vscode.OutputChannel): Promise<void> {
+async function inspectDirectOllamaModels(
+  output: vscode.OutputChannel,
+  provider: OllamaLanguageModelProvider
+): Promise<void> {
   const settings = vscode.workspace.getConfiguration('ollama');
-  const endpoint = settings.get<string>('endpoint', defaultOllamaURL) || defaultOllamaURL;
+  const workspaceEndpoint = settings.get<string>('endpoint', defaultOllamaURL) || defaultOllamaURL;
+  const selected = provider.selectDiagnosticsConfiguration({
+    url: workspaceEndpoint,
+    headers: getConfiguredHeaders(settings)
+  });
+  const { url: endpoint, headers } = selected.configuration;
+  output.appendLine(
+    `Direct Ollama API is inspecting ${configurationSourceLabel(selected.source)} at ${endpoint}.`
+  );
   const source = new vscode.CancellationTokenSource();
   const disposables: vscode.Disposable[] = [source];
   const ollama = new Ollama(ollamaDiagnosticsClientOptions(
     endpoint,
-    settings.get<Record<string, unknown>>('headers', {}),
+    headers,
     createFetch(source.token, disposables)
   ));
   const timer = setTimeout(() => source.cancel(), 5000);
@@ -80,6 +95,28 @@ async function inspectDirectOllamaModels(output: vscode.OutputChannel): Promise<
   } finally {
     clearTimeout(timer);
     disposeAll(disposables);
+  }
+}
+
+function getConfiguredHeaders(settings: vscode.WorkspaceConfiguration): Record<string, string> {
+  const configured = settings.get<Record<string, unknown>>('headers', {});
+  const headers: Record<string, string> = {};
+  for (const [name, value] of Object.entries(configured)) {
+    if (typeof value === 'string') {
+      headers[name] = value;
+    }
+  }
+  return headers;
+}
+
+function configurationSourceLabel(source: OllamaDiagnosticsConfigurationSource): string {
+  switch (source) {
+    case 'used-provider-group':
+      return 'the most recently used provider group';
+    case 'resolved-provider-group':
+      return 'the most recently resolved provider group';
+    case 'workspace-settings':
+      return 'workspace settings';
   }
 }
 
