@@ -108,6 +108,6 @@
   },
   "dependencies": {
     "ollama": "^0.6.3",
-    "undici": "^7.29.0"
+    "undici": "^8.10.0"
   }
 }
