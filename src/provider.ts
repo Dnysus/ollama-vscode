@@ -255,6 +255,7 @@ export class OllamaLanguageModelProvider implements vscode.LanguageModelChatProv
         model: model.model,
         messages: ollamaMessages,
         stream: true,
+        keep_alive: '1h', // prevent model from unloading
         tools: tools.length > 0 ? tools : undefined,
         options: options.modelOptions ? { ...options.modelOptions } : undefined
       } as ChatRequest & { stream: true });
